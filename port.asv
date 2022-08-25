@@ -1,0 +1,71 @@
+% Code to perform portfolio analysis on selected values
+%% Housekeeping
+clear
+clc
+close all
+%% Import data ETFs + Managed fund
+etfsFiles= dir('ETF_data\*.csv');
+for ii=1:numel(etfsFiles)
+     assignin('base',['tab' erase(etfsFiles(ii).name,'.L.csv')],table2timetable(read_etf_data([etfsFiles(ii).folder '\' etfsFiles(ii).name])))
+     etfsNames{ii} = ['tab' erase(etfsFiles(ii).name,'.L.csv')];
+end
+
+
+%% Synchronize timetables
+timetableETFs = synchronize(tab0P0000M0RQ{:, tabCEA1, tabCNX1, tabHMCH, tabIASH, tabIFSW, tabIH2O, tabINRG, tabIUSA, tabIWQU, tabSGLN, tabXLVP);
+%timetableStocks = synchronize(tabSY1, tabDSM, tabALFP, tabLIN_US, tabNVDA);
+%timetableAll = synchronize(timetableETFs,timetableStocks);
+
+%returns = [returnsETFs returnsStocks];
+
+
+%namesEtfsStocks = [ETFsNames stocksNames];
+
+
+%% Portfolio setup
+dailyReturn = tick2ret(timetableETFs{:,1:end});
+p = Portfolio('AssetList',etfsNames);
+p = estimateAssetMoments(p,dailyReturn);
+p = setDefaultConstraints(p);
+w1 = estimateMaxSharpeRatio(p);
+[risk1, ret1] = estimatePortMoments(p, w1);
+%% Plotting
+risks = sqrt(diag(p.AssetCovar));
+returns = p.AssetMean;
+figure
+scatter(risks,returns)
+ylabel('Return')
+xlabel('Risk')
+
+figure
+plotFrontier(p)
+hold on
+scatter(risks,returns)
+
+scatter(risk1,ret1,'red','filled','diamond');
+x = [0, risk1*2]';
+y = [p.RiskFreeRate,ret1*2]';
+plot(x,y,'-.')
+hold off
+%% Support functions
+function data = callAPI(name) %#ok<DEFNU>
+data = webread(['https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=',name ,'&outputsize=full&apikey=JJU6G8ZMBIK8A635']);
+end
+
+function dataPrice = makeTable(struct)
+
+fn = fieldnames(struct.TimeSeries_Daily_);
+for jj =1:numel(fn)
+    %fn = fieldnames(IFSW.TimeSeries_Daily_);
+    fni = string(fn(jj));
+    field = struct.TimeSeries_Daily_.(fni);
+    %         if ~any(struct.MetaData.x2_Symbol == 'LON:IFSW') ||  ~any(struct.MetaData.x2_Symbol == "LON:IWQU")
+    %             closePrice(jj,1) = str2double(field.x4_Close)*1.18*100; %#ok<AGROW> % % - str2double(field.x1_Open);
+    date(jj,1) = datetime(erase(fni,'x'),'InputFormat','yyyy_MM_dd'); %#ok<AGROW>
+    % else
+    closePrice(jj,1) = str2double(field.x4_Close); %#ok<AGROW> % % - str2double(field.x1_Open);
+    %end
+end
+dataPrice = table(date,closePrice,'VariableNames',{'date',struct.MetaData.x2_Symbol});
+end
+
